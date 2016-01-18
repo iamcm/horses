@@ -30,61 +30,157 @@
                                    maximum-scale=1.0,
                                    user-scalable=no,
                                    minimal-ui" />
-        <link rel="stylesheet" type="text/css" href="css/index.css" />
+
+        <link rel="stylesheet" href="bigslide/bigslide.css">
         <link rel="stylesheet" href="appjs/app.min.css">
+        <link rel="stylesheet" type="text/css" href="css/index.css" />
+        <link rel="stylesheet" type="text/css" href="css/cm.css" />
+        <link rel="stylesheet" type="text/css" href="css/animate.css" />
+
         <title>Horses</title>
+
+        <style type="text/css">
+        #menu {
+            display: none;
+        }
+        .remove-filter-link {
+            padding-right: 30px;
+        }
+        .pull-right {
+            float: right;
+        }
+        </style>
     </head>
     <body>
   <body>
+      <nav id="menu" class="panel" role="navigation">
+        <ul>
+            <li><a href="#" onclick="App.load('filters');">Filters</a></li>
+        </ul>
+    </nav>
+
+    <div id="overlay" class="cm"></div>
+
     <div class="app-page" data-page="home">
         <div class="app-topbar">
-            <div class="app-title">Horses</div>
-            <div class="app-button right" data-target="page2">Settings</div>
+            <a href="#menu" class="menu-link">&#9776;</a>
+            <div class="app-button right" id="refresh-horses-btn">Refresh</div>
         </div>
         <div class="app-content">
-            <div class="app-section">
+            <!--div class="app-section">
                 <input type="search" class="app-input" id="search-input">
+            </div-->
+            <div class="app-section">
+                <div>
+                    Today's Horses
+                    <div class="pull-right" id="last-update"></div>
+                </div>
             </div>
             <div class="app-content">
-                <ul class="app-list" id="horses">
-                </ul>
+                <ul class="app-list" id="horses"></ul>
             </div>
         </div>
     </div>
 
-    <div class="app-page" data-page="page2">
+
+    <div class="app-page" data-page="filters">
         <div class="app-topbar">
             <div class="app-button left" data-back data-autotitle></div>
-            <div class="app-title">Page 2</div>
+            <div class="app-title">Filters</div>
         </div>
         <div class="app-content">
-            <ul class="app-list">
-              <li>Item 1</li>
-              <li>Item 2</li>
-              <li>Item 3</li>
-            </ul>
+            <div class="app-section">
+                <input class="app-input" placeholder="Filter" id="filter-input">
+                <div class="app-button" id="add-filter-btn">Add Filter</div>
+            </div>
+
+            <ul class="app-list" id="filters-list"></ul>
         </div>
     </div>
 
     <script type="text/javascript" src="js/jquery.js"></script>
     <script src="appjs/zepto.js"></script>
     <script src="appjs/app.min.js"></script>
+
+    <script src="bigslide/bigslide.js"></script>
+
     <script>
+    $(document).ready(function() {
+        $('.menu-link').bigSlide({
+            'easyClose':true,
+            'menuWidth':'85%'
+        });
+    });
+
+            function refreshHorses() {
+                $.ajax({
+                    url: "http://horses-api.iamcm.co.uk/horses",
+                    context: document.body,
+                    crossDomain:true,
+                    method:'get',
+                    data:{'filters':getFiltersAsString}
+
+                }).complete(function(data) {
+                    if(data.responseJSON.length == 0) {
+                        $('#horses').html('');
+                        $('#horses').append('<li>No horses found that match your filters</li>');
+                    } else {
+                        $('#horses').html('');
+
+                        $.each(data.responseJSON, function(){
+                            $('#horses').append('<li>'+ this['name'] +' - ('+ this['odds'] +')</li>');
+                        })
+
+                        $('#last-update').text((new Date).toDateString());
+                    }
+                });
+            }
+
+            function renderFilters() {
+                var template = '<li><a class="remove-filter-link">X</a><span class="filter-text">{{filter}}</span></li>';
+                var html = "";
+                $.each(getFilters(), function(){
+                    html += template.replace('{{filter}}', this);
+                });
+                $('#filters-list').html(html);
+            }
+
+            function getFilters() {
+                var item = localStorage.getItem('filters');
+                if(item) {
+                    return JSON.parse(item);    
+                } 
+
+                return [];
+            }
+
+            function getFiltersAsString() {
+                return JSON.stringify(getFilters());
+            }
+
+            function saveFilters(filters) {
+                localStorage.setItem('filters', JSON.stringify(filters));
+            }
+
+            function addFilter(filter) {
+                var filters = getFilters();
+                filters.push(filter);
+                saveFilters(filters);
+                renderFilters();
+            }
+
+            function removeFilter(filter) {
+                var filters = getFilters();
+                var newFilters = [];
+                $.each(filters, function(){
+                    if(this != filter) newFilters.push(this);
+                })
+                saveFilters(newFilters);
+                renderFilters();
+            }
 
         App.controller('home', function (page) {
-
-
-            $.ajax({
-                url: "http://192.168.1.4:8080/horses",
-                context: document.body,
-                crossDomain:true,
-
-            }).complete(function(data) {
-                $.each(data.responseJSON, function(){
-                    $('#horses').append('<li>'+ this +'</li>')
-
-                })
-            });
+            refreshHorses();
 
             $(document).on('keyup', '#search-input', function(){
                 var val = $(this).val().toLowerCase();
@@ -97,9 +193,31 @@
                 });
             })
 
+            $(document).on('click', '#refresh-horses-btn', function(){
+                refreshHorses();
+            })
+
         });
 
-        App.controller('page2', function (page) {
+        App.controller('filters', function (page) {
+            $(document).on('click', '#add-filter-btn', function(){
+                var val = $('#filter-input').val();
+                if(val.trim() == '') {
+                    alert('Please enter some filter text');
+                } else {
+                    addFilter(val);
+                    $('#filter-input').val('');
+                }
+            })
+
+            $(document).on('click', '.remove-filter-link', function(){
+                var text = $(this).parent().find('.filter-text').text();
+                removeFilter(text);
+            });
+
+            setTimeout(function(){
+                renderFilters();
+            }, 700)
         });
 
         try {
@@ -107,6 +225,11 @@
         } catch (err) {
             App.load('home');
         }
+
+        window.setTimeout(function(){
+            $('#menu').css('display','block');
+        }, 1000)
+
 
     </script>
   </body>
